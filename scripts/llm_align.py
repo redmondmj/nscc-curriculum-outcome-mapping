@@ -2,17 +2,20 @@
 # Uses a local LLM (via OpenAI-compatible API) to map course Learning Outcomes
 # to Program Outcomes, then writes alignment.json for use by generate_report.py
 #
-# Configure LLM_BASE_URL and LLM_MODEL below before running.
+# Copy .env.example to .env and fill in your LLM details before running.
 # Run: python scripts/llm_align.py
 
 import json
 import os
 from openai import OpenAI
+from dotenv import load_dotenv
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-LLM_BASE_URL = "http://YOUR-CLUSTER-IP:PORT/v1"   # e.g. http://192.168.1.50:11434/v1
-LLM_MODEL    = "your-model-name"                   # e.g. qwen2.5-32b
-LLM_API_KEY  = "none"                              # local clusters typically don't need a real key
+# ── Configuration (loaded from .env) ─────────────────────────────────────────
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
+LLM_BASE_URL = os.getenv("LLM_BASE_URL")    # None = use OpenAI default (cloud)
+LLM_MODEL    = os.getenv("LLM_MODEL",    "gpt-4o")
+LLM_API_KEY  = os.getenv("LLM_API_KEY",  "none")
 
 BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CURRICULUM_PATH = os.path.join(BASE_DIR, "data", "processed", "curriculum_extracted.json")
@@ -37,7 +40,11 @@ PROGRAM_OUTCOMES = [
 PO_LIST_TEXT = "\n".join(PROGRAM_OUTCOMES)
 
 # ── LLM client ────────────────────────────────────────────────────────────────
-client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY)
+# base_url is optional — omitting it uses the OpenAI default (cloud)
+client_kwargs = {"api_key": LLM_API_KEY}
+if LLM_BASE_URL:
+    client_kwargs["base_url"] = LLM_BASE_URL
+client = OpenAI(**client_kwargs)
 
 
 def align_outcome(course_code, course_name, outcome_text, objectives):

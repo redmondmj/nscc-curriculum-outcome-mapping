@@ -28,13 +28,21 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Before running `llm_align.py`, edit the configuration block at the top of the script:
+Copy `.env.example` to `.env` and uncomment the block that matches your setup:
 
-```python
-LLM_BASE_URL = "http://YOUR-CLUSTER-IP:PORT/v1"
-LLM_MODEL    = "your-model-name"
-LLM_API_KEY  = "none"
+```bash
+cp .env.example .env
 ```
+
+`.env.example` includes ready-to-use configurations for:
+- **NSCC Truro Campus AI Cluster** — local vLLM running Qwen 32B (default)
+- **Ollama** — any locally-pulled model
+- **LM Studio** — any locally-loaded model
+- **OpenAI** — cloud fallback (note: data leaves your network)
+
+> **Note on Claude / Anthropic:** The Anthropic API is not OpenAI-compatible.
+> The easiest path is to front it with [LiteLLM](https://github.com/BerriAI/litellm)
+> and point `LLM_BASE_URL` at the LiteLLM proxy.
 
 ## Usage
 
