@@ -44,25 +44,49 @@ cp .env.example .env
 > The easiest path is to front it with [LiteLLM](https://github.com/BerriAI/litellm)
 > and point `LLM_BASE_URL` at the LiteLLM proxy.
 
+## Input folder structure
+
+Create a folder under `data/raw/` named after your program, then drop your source documents in:
+
+```
+data/raw/
+  ITSM/
+    program_outline.pdf     ← program outline PDF (Program Outcomes extracted from here)
+    courses/
+      NETW1027.rtf          ← one RTF file per course
+      OSYS1000.rtf
+      ...
+```
+
 ## Usage
 
-### 1. Extract curriculum from PDFs
+### Run the full pipeline (recommended)
 ```bash
-python scripts/extract_curriculum.py
+python scripts/run_pipeline.py --program ITSM
 ```
-Place source PDF(s) in `data/raw/` first.
+Runs all four steps in order. Use `--from-step 3` to resume from a specific step if something fails.
 
-### 2. Run LLM alignment
+### Run steps individually
 ```bash
-python scripts/llm_align.py
+python scripts/extract_program_outcomes.py --program ITSM
+python scripts/extract_curriculum.py       --program ITSM
+python scripts/llm_align.py               --program ITSM
+python scripts/generate_report.py         --program ITSM
 ```
-Reads `data/processed/curriculum_extracted.json`, writes `data/processed/alignment.json`.
 
-### 3. Generate report
+All outputs are written to `data/processed/<PROGRAM>/`.
+
+### Adding a second program
+Just create `data/raw/CSD/` with the same structure and run:
 ```bash
-python scripts/generate_report.py
+python scripts/run_pipeline.py --program CSD
 ```
-Reads `data/processed/alignment.json`, writes `data/processed/LO_PO_Alignment_Report.docx`.
+
+## Adding support for a unified course document (future)
+
+When a single PDF containing all courses becomes available, add a parser function in
+`extract_curriculum.py` and extend the `--format` flag choices. The `--format per-course-rtf`
+default behaviour is unchanged.
 
 ## Requirements
 

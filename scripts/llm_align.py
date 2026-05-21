@@ -5,6 +5,7 @@
 # Copy .env.example to .env and fill in your LLM details before running.
 # Run: python scripts/llm_align.py
 
+import argparse
 import json
 import os
 from openai import OpenAI
@@ -13,31 +14,11 @@ from dotenv import load_dotenv
 # ── Configuration (loaded from .env) ─────────────────────────────────────────
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
-LLM_BASE_URL = os.getenv("LLM_BASE_URL")    # None = use OpenAI default (cloud)
-LLM_MODEL    = os.getenv("LLM_MODEL",    "gpt-4o")
-LLM_API_KEY  = os.getenv("LLM_API_KEY",  "none")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL")
+LLM_MODEL    = os.getenv("LLM_MODEL",   "gpt-4o")
+LLM_API_KEY  = os.getenv("LLM_API_KEY", "none")
 
-BASE_DIR        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CURRICULUM_PATH = os.path.join(BASE_DIR, "data", "processed", "curriculum_extracted.json")
-OUTPUT_PATH     = os.path.join(BASE_DIR, "data", "processed", "alignment.json")
-
-# ── Program Outcomes ──────────────────────────────────────────────────────────
-PROGRAM_OUTCOMES = [
-    "PO1: Analyze and document business systems, requirements and problems using standard methodologies and notation.",
-    "PO2: Design, implement, and maintain a secure networked environment.",
-    "PO3: Configure, secure and administer network operating systems, software and hardware to support business systems.",
-    "PO4: Provide technical training to support business systems.",
-    "PO5: Research, learn and integrate innovations in systems management and security.",
-    "PO6: Integrate professional practices and skills into all projects, activities and communications in the context of an IT industry environment.",
-    "PO7: Demonstrate continuous professional improvement through reflection and modification of processes and approaches in relation to the IT industries.",
-    "PO8: Blend service and learning in ways that use program-related skills, knowledge and behaviours to serve others at the campus, within the College and in the community.",
-    "PO9: Apply a Portfolio approach to the personal management of learning and career planning relating to the learner's occupational readiness.",
-    "PO10: Apply the Essential & Employability Skills needed to enter, stay in, and progress in the world of work, productively contributing to the economy and the community.",
-    "PO11: Apply sustainable practices that support economic, social, cultural and environmental stewardship.",
-    "PO12: Demonstrate the principles of quality and safety as per the 5S+S standard, complete WHMIS and OH&S requirements.",
-]
-
-PO_LIST_TEXT = "\n".join(PROGRAM_OUTCOMES)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ── LLM client ────────────────────────────────────────────────────────────────
 # base_url is optional — omitting it uses the OpenAI default (cloud)
@@ -47,11 +28,11 @@ if LLM_BASE_URL:
 client = OpenAI(**client_kwargs)
 
 
-def align_outcome(course_code, course_name, outcome_text, objectives):
+def align_outcome(course_code, course_name, outcome_text, objectives, po_list_text):
     """Ask the LLM to map a single course LO to Program Outcomes."""
     objectives_text = "\n".join(f"  - {o}" for o in objectives if o)
 
-    prompt = f"""You are a curriculum alignment expert for a college IT diploma program.
+    prompt = f"""You are a curriculum alignment expert for a college diploma program.
 
 A course learning outcome and its supporting objectives are listed below.
 Map this outcome to the Program Outcomes it best supports.
@@ -67,14 +48,14 @@ Objectives:
 {objectives_text}
 
 Program Outcomes to consider:
-{PO_LIST_TEXT}
+{po_list_text}
 
 Respond ONLY with a valid JSON object in this exact format:
 {{
   "primary": ["PO1", "PO3"],
   "supporting": ["PO5", "PO6"]
 }}
-Use only PO1 through PO12. Both arrays may be empty but must be present."""
+Use only the PO IDs listed above. Both arrays may be empty but must be present."""
 
     response = client.chat.completions.create(
         model=LLM_MODEL,
@@ -92,7 +73,6 @@ Use only PO1 through PO12. Both arrays may be empty but must be present."""
 
     try:
         result = json.loads(raw)
-        # Normalise keys to lowercase just in case
         return {
             "primary":    result.get("primary", []),
             "supporting": result.get("supporting", []),
@@ -104,33 +84,49 @@ Use only PO1 through PO12. Both arrays may be empty but must be present."""
 
 
 def main():
-    print(f"Loading curriculum from {CURRICULUM_PATH}")
-    with open(CURRICULUM_PATH, "r", encoding="utf-8") as f:
+    parser = argparse.ArgumentParser(
+        description="Map course Learning Outcomes to Program Outcomes using a local LLM."
+    )
+    parser.add_argument(
+        "--program", required=True,
+        help="Program folder name under data/raw/ and data/processed/ (e.g. ITSM)"
+    )
+    args = parser.parse_args()
+
+    proc_dir        = os.path.join(BASE_DIR, "data", "processed", args.program)
+    curriculum_path = os.path.join(proc_dir, "curriculum_extracted.json")
+    po_path         = os.path.join(proc_dir, "program_outcomes.json")
+    output_path     = os.path.join(proc_dir, "alignment.json")
+
+    # ── Load Program Outcomes ─────────────────────────────────────────────────
+    print(f"Loading Program Outcomes from {po_path}")
+    with open(po_path, "r", encoding="utf-8") as f:
+        po_data = json.load(f)
+    po_list_text = "\n".join(f"{po['id']}: {po['text']}" for po in po_data)
+
+    # ── Load curriculum ───────────────────────────────────────────────────────
+    print(f"Loading curriculum from {curriculum_path}")
+    with open(curriculum_path, "r", encoding="utf-8") as f:
         courses = json.load(f)
 
-    results = []
     total_outcomes = sum(len(c.get("outcomes", [])) for c in courses)
-    processed = 0
+    processed      = 0
+    results        = []
 
     for course in courses:
         code = course["course_code"]
         name = course["course_name"]
-        print(f"\n{'─'*60}")
-        print(f"Course: {code} — {name}")
+        print(f"\n{'─'*60}\nCourse: {code} — {name}")
 
-        course_result = {
-            "course_code": code,
-            "course_name": name,
-            "outcomes": []
-        }
+        course_result = {"course_code": code, "course_name": name, "outcomes": []}
 
         for outcome in course.get("outcomes", []):
             processed += 1
-            text = outcome["outcome_text"]
+            text       = outcome["outcome_text"]
             objectives = outcome.get("objectives", [])
             print(f"  [{processed}/{total_outcomes}] {text[:70]}...")
 
-            alignment = align_outcome(code, name, text, objectives)
+            alignment = align_outcome(code, name, text, objectives, po_list_text)
             print(f"    → Primary: {alignment['primary']}  Supporting: {alignment['supporting']}")
 
             course_result["outcomes"].append({
@@ -141,12 +137,11 @@ def main():
 
         results.append(course_result)
 
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+    os.makedirs(proc_dir, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
-    print(f"\n{'='*60}")
-    print(f"Done. Alignment written to {OUTPUT_PATH}")
+    print(f"\n{'='*60}\nDone. Alignment written to {output_path}")
 
 
 if __name__ == "__main__":
