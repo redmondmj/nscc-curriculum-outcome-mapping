@@ -60,8 +60,9 @@ def extract_course_data(filepath):
     }
 
 def main():
-    raw_dir = r"c:\Users\redmo\OneDrive\Documents\GitRepos\ITSM-CAF-Alignment\data\raw\itsm_curriculum"
-    processed_dir = r"c:\Users\redmo\OneDrive\Documents\GitRepos\ITSM-CAF-Alignment\data\processed"
+    base_dir      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    raw_dir       = os.path.join(base_dir, "data", "raw", "itsm_curriculum")
+    processed_dir = os.path.join(base_dir, "data", "processed")
     
     all_courses = []
     

@@ -1,4 +1,5 @@
 import io
+import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -11,7 +12,8 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import copy
 
-OUTPUT = r"C:\Users\redmo\OneDrive\Documents\GitRepos\ITSM-CAF-Alignment\data\processed\LO_PO_Alignment_Report.docx"
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT    = os.path.join(_BASE_DIR, "data", "processed", "LO_PO_Alignment_Report.docx")
 
 # ── colour palette ──────────────────────────────────────────────────────────
 # Hex strings for XML shading; RGBColor objects for font.color.rgb
