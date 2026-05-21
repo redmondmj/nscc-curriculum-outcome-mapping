@@ -30,16 +30,30 @@ parser.add_argument("--program", required=True,
                     help="Program folder name under data/processed/ (e.g. ITSM)")
 args = parser.parse_args()
 
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_PROC_DIR = os.path.join(_BASE_DIR, "data", "processed", args.program)
-OUTPUT    = os.path.join(_PROC_DIR, "LO_PO_Alignment_Report.docx")
+_BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_PROC_DIR    = os.path.join(_BASE_DIR, "data", "processed", args.program)
+_RUN_TS      = date.today().strftime("%Y%m%d")
+OUTPUT       = os.path.join(_PROC_DIR, "LO_PO_Alignment_Report.docx")
+OUTPUT_ARCHIVE = os.path.join(_PROC_DIR, f"LO_PO_Alignment_Report_{_RUN_TS}.docx")
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 with open(os.path.join(_PROC_DIR, "program_outcomes.json"), encoding="utf-8") as f:
     po_data = json.load(f)   # [{"id": "PO1", "text": "..."}, ...]
 
 with open(os.path.join(_PROC_DIR, "alignment.json"), encoding="utf-8") as f:
-    alignment_data = json.load(f)  # [{course_code, course_name, outcomes: [{outcome_text, primary, supporting}]}]
+    _raw = json.load(f)
+
+# Support both the legacy flat list and the new metadata-wrapped format
+if isinstance(_raw, dict) and "alignment" in _raw:
+    _meta          = _raw.get("_meta", {})
+    alignment_data = _raw["alignment"]
+else:
+    _meta          = {}
+    alignment_data = _raw
+
+RUN_TIMESTAMP = _meta.get("run_timestamp", "unknown")
+RUN_MODEL     = _meta.get("model",         "unknown")
+RUN_ENDPOINT  = _meta.get("endpoint",      "unknown")
 
 # ── Derive display structures ─────────────────────────────────────────────────
 N_PO     = len(po_data)
@@ -329,6 +343,47 @@ no_space_para(doc, (
 ), size=11)
 
 # ════════════════════════════════════════════════════════════════════════════
+# DISCLAIMER BANNER
+# ════════════════════════════════════════════════════════════════════════════
+AMBER_HEX  = "FFF3CD"
+AMBER_BORDER = "856404"
+
+disc_tbl = doc.add_table(rows=1, cols=1)
+disc_tbl.style = "Table Grid"
+disc_cell = disc_tbl.rows[0].cells[0]
+disc_cell.width = Inches(6.5)
+
+# Amber background
+tc   = disc_cell._tc
+tcPr = tc.get_or_add_tcPr()
+shd  = OxmlElement("w:shd")
+shd.set(qn("w:val"),   "clear")
+shd.set(qn("w:color"), "auto")
+shd.set(qn("w:fill"),  AMBER_HEX)
+tcPr.append(shd)
+
+disc_cell.text = ""
+for line in [
+    ("⚠  AI-GENERATED CONTENT — REQUIRES HUMAN REVIEW", True,  10),
+    ("",                                                 False, 4),
+    (f"This report was produced by an automated pipeline using {RUN_MODEL} "
+     f"({RUN_ENDPOINT}) on {RUN_TIMESTAMP}. Alignment mappings reflect the "
+     "model's interpretation and may contain errors or omissions.",          False, 9),
+    ("",                                                 False, 4),
+    ("Do not use this report for accreditation, official program review, or "
+     "curriculum governance decisions without independent expert validation.",False, 9),
+]:
+    p   = disc_cell.add_paragraph()
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(2)
+    run = p.add_run(line[0])
+    run.bold      = line[1]
+    run.font.size = Pt(line[2])
+    run.font.color.rgb = RGBColor(0x85, 0x64, 0x04)
+
+doc.add_paragraph()
+
+# ════════════════════════════════════════════════════════════════════════════
 # SECTION 3 – PROGRAM OUTCOMES REFERENCE
 # ════════════════════════════════════════════════════════════════════════════
 add_heading(doc, "Program Outcomes Reference", 1)
@@ -558,4 +613,6 @@ no_space_para(doc, (
 # ════════════════════════════════════════════════════════════════════════════
 os.makedirs(_PROC_DIR, exist_ok=True)
 doc.save(OUTPUT)
-print(f"Saved: {OUTPUT}")
+doc.save(OUTPUT_ARCHIVE)
+print(f"Saved:    {OUTPUT}")
+print(f"Archived: {OUTPUT_ARCHIVE}")

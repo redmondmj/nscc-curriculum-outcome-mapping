@@ -2,6 +2,12 @@
 
 A fully local pipeline for mapping course Learning Outcomes (LOs) to Program Outcomes (POs) using a locally-hosted LLM, with automated Word report generation.
 
+## ⚠ Important
+
+All pipeline outputs are AI-generated and require expert human review before use in any official
+capacity. See [DISCLAIMER.md](DISCLAIMER.md) for full details on risks, data handling, and
+intended use.
+
 ## Pipeline Overview
 
 ```

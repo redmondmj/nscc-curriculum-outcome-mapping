@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -25,8 +26,25 @@ LLM_API_KEY  = os.getenv("LLM_API_KEY", "none")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# ── Cloud-leakage guardrail ───────────────────────────────────────────────────
+def check_cloud_safety(allow_cloud: bool):
+    """Warn and confirm before sending data to a cloud API."""
+    if LLM_BASE_URL:
+        return   # local endpoint configured — safe to proceed
+    if allow_cloud:
+        print("WARNING: LLM_BASE_URL not set. Sending data to OpenAI cloud API (--allow-cloud flag set).")
+        return
+    print("\n" + "!" * 60)
+    print("  WARNING: LLM_BASE_URL is not set in your .env file.")
+    print("  Curriculum data will be sent to the OpenAI cloud API.")
+    print("  This may violate your institution's data handling policy.")
+    print("!" * 60)
+    print("\n  To use a local model, set LLM_BASE_URL in your .env file.")
+    print("  See .env.example for configuration options.")
+    print("\n  To proceed with the cloud API anyway, re-run with --allow-cloud")
+    sys.exit(1)
+
 # ── LLM client ────────────────────────────────────────────────────────────────
-# base_url is optional — omitting it uses the OpenAI default (cloud)
 client_kwargs = {"api_key": LLM_API_KEY}
 if LLM_BASE_URL:
     client_kwargs["base_url"] = LLM_BASE_URL
@@ -96,12 +114,23 @@ def main():
         "--program", required=True,
         help="Program folder name under data/raw/ and data/processed/ (e.g. ITSM)"
     )
+    parser.add_argument(
+        "--allow-cloud", action="store_true",
+        help="Allow sending data to a cloud API if LLM_BASE_URL is not set. "
+             "Use only if you have verified this is permitted by your data handling policy."
+    )
     args = parser.parse_args()
 
-    proc_dir        = os.path.join(BASE_DIR, "data", "processed", args.program)
+    # ── Safety check ─────────────────────────────────────────────────────────
+    check_cloud_safety(args.allow_cloud)
+
+    run_ts   = datetime.now().strftime("%Y%m%d_%H%M")
+    proc_dir = os.path.join(BASE_DIR, "data", "processed", args.program)
+
     curriculum_path = os.path.join(proc_dir, "curriculum_extracted.json")
     po_path         = os.path.join(proc_dir, "program_outcomes.json")
     output_path     = os.path.join(proc_dir, "alignment.json")
+    archive_path    = os.path.join(proc_dir, f"alignment_{run_ts}.json")
 
     # ── Load Program Outcomes ─────────────────────────────────────────────────
     print(f"Loading Program Outcomes from {po_path}")
@@ -142,11 +171,29 @@ def main():
 
         results.append(course_result)
 
-    os.makedirs(proc_dir, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
+    # ── Wrap results with run metadata ───────────────────────────────────────
+    output = {
+        "_meta": {
+            "program":      args.program,
+            "run_timestamp": run_ts,
+            "model":        LLM_MODEL,
+            "endpoint":     LLM_BASE_URL or "OpenAI cloud (default)",
+            "disclaimer":   "AI-generated alignment. Requires expert human review before official use.",
+            "total_courses": len(results),
+            "total_outcomes": sum(len(c["outcomes"]) for c in results),
+        },
+        "alignment": results,
+    }
 
-    print(f"\n{'='*60}\nDone. Alignment written to {output_path}")
+    os.makedirs(proc_dir, exist_ok=True)
+    for path in (output_path, archive_path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
+
+    print(f"\n{'='*60}")
+    print(f"Done.")
+    print(f"  Current:  {output_path}")
+    print(f"  Archived: {archive_path}")
 
 
 if __name__ == "__main__":
