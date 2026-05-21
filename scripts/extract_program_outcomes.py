@@ -28,13 +28,16 @@ def extract_pos_from_pdf(pdf_path: str) -> list[dict]:
 
     # ── Find the Program Outcomes section ────────────────────────────────────
     SECTION_START = re.compile(r'^program outcomes$', re.IGNORECASE)
+    # Only stop at top-level structural headings — NOT inline explanatory text
+    # like "Essential Skills:" or "Employability Skills:" which appear mid-section
     SECTION_END   = re.compile(
-        r'^(program admission|graduation requirements|employment|additional info'
-        r'|accreditation|advisement|plan of study|milestones|essential skills'
-        r'|employability skills)',
+        r'^(program admission|graduation requirements|employment opportunities'
+        r'|additional information|accreditation|advisement|plan of study|milestones)',
         re.IGNORECASE
     )
-    PO_LINE = re.compile(r'^(\d{1,2})\.\s+(.+)')
+    # Also filter out PDF header/footer bleed lines (e.g. "ITSM: IT Systems... Program Outline 1")
+    FOOTER_LINE   = re.compile(r'program outline\s+\d+$', re.IGNORECASE)
+    PO_LINE       = re.compile(r'^(\d{1,2})\.\s+(.+)')
 
     in_section  = False
     outcomes    = []
@@ -49,6 +52,10 @@ def extract_pos_from_pdf(pdf_path: str) -> list[dict]:
 
         if SECTION_END.match(line):
             break
+
+        # Skip PDF header/footer bleed lines
+        if FOOTER_LINE.search(line):
+            continue
 
         m = PO_LINE.match(line)
         if m:

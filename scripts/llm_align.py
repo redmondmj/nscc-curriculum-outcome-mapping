@@ -8,8 +8,13 @@
 import argparse
 import json
 import os
+import sys
 from openai import OpenAI
 from dotenv import load_dotenv
+
+# Force UTF-8 output on Windows consoles
+if sys.stdout.encoding != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── Configuration (loaded from .env) ─────────────────────────────────────────
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
